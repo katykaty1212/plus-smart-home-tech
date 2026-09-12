@@ -2,9 +2,6 @@ package ru.yandex.practicum.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.avro.specific.SpecificRecordBase;
-import org.apache.kafka.clients.producer.Producer;
-import org.apache.kafka.clients.producer.ProducerRecord;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import ru.yandex.practicum.kafka.telemetry.event.*;
@@ -15,7 +12,7 @@ import ru.yandex.practicum.model.*;
 @RequiredArgsConstructor
 public class CollectorService {
 
-    private final Producer<Void, SpecificRecordBase> producer;
+    private final KafkaProducerService producerService;
 
     @Value("${kafka.topics.sensors}")
     private String sensorsTopic;
@@ -25,14 +22,14 @@ public class CollectorService {
 
     public void collectSensorEvent(SensorEvent event) {
         SensorEventAvro avro = toSensorAvro(event);
-        producer.send(new ProducerRecord<>(sensorsTopic, avro));
-        log.info("Отправлено событие датчика: {}", avro);
+        producerService.send(sensorsTopic, event.getHubId(),
+                event.getTimestamp().toEpochMilli(), avro);
     }
 
     public void collectHubEvent(HubEvent event) {
         HubEventAvro avro = toHubAvro(event);
-        producer.send(new ProducerRecord<>(hubsTopic, avro));
-        log.info("Отправлено событие хаба: {}", avro);
+        producerService.send(hubsTopic, event.getHubId(),
+                event.getTimestamp().toEpochMilli(), avro);
     }
 
     private SensorEventAvro toSensorAvro(SensorEvent event) {
