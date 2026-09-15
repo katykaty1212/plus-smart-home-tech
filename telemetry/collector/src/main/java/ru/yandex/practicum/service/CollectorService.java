@@ -4,8 +4,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import ru.yandex.practicum.grpc.telemetry.event.*;
 import ru.yandex.practicum.kafka.telemetry.event.*;
-import ru.yandex.practicum.model.*;
 
 @Slf4j
 @Service
@@ -20,97 +20,98 @@ public class CollectorService {
     @Value("${kafka.topics.hubs}")
     private String hubsTopic;
 
-    public void collectSensorEvent(SensorEvent event) {
+    public void collectSensorEvent(SensorEventProto event) {
         SensorEventAvro avro = toSensorAvro(event);
         producerService.send(sensorsTopic, event.getHubId(),
-                event.getTimestamp().toEpochMilli(), avro);
+                event.getTimestamp().getSeconds() * 1000 + event.getTimestamp().getNanos() / 1_000_000, avro);
     }
 
-    public void collectHubEvent(HubEvent event) {
+    public void collectHubEvent(HubEventProto event) {
         HubEventAvro avro = toHubAvro(event);
         producerService.send(hubsTopic, event.getHubId(),
-                event.getTimestamp().toEpochMilli(), avro);
+                event.getTimestamp().getSeconds() * 1000 + event.getTimestamp().getNanos() / 1_000_000, avro);
     }
 
-    private SensorEventAvro toSensorAvro(SensorEvent event) {
-        Object payload = switch (event.getType()) {
-            case LIGHT_SENSOR_EVENT -> {
-                LightSensorEvent e = (LightSensorEvent) event;
+    private SensorEventAvro toSensorAvro(SensorEventProto event) {
+        Object payload = switch (event.getPayloadCase()) {
+            case LIGHT_SENSOR -> {
+                LightSensorProto p = event.getLightSensor();
                 yield LightSensorAvro.newBuilder()
-                        .setLinkQuality(e.getLinkQuality())
-                        .setLuminosity(e.getLuminosity())
+                        .setLinkQuality(p.getLinkQuality())
+                        .setLuminosity(p.getLuminosity())
                         .build();
             }
-            case SWITCH_SENSOR_EVENT -> {
-                SwitchSensorEvent e = (SwitchSensorEvent) event;
+            case SWITCH_SENSOR -> {
+                SwitchSensorProto p = event.getSwitchSensor();
                 yield SwitchSensorAvro.newBuilder()
-                        .setState(e.isState())
+                        .setState(p.getState())
                         .build();
             }
-            case CLIMATE_SENSOR_EVENT -> {
-                ClimateSensorEvent e = (ClimateSensorEvent) event;
+            case CLIMATE_SENSOR -> {
+                ClimateSensorProto p = event.getClimateSensor();
                 yield ClimateSensorAvro.newBuilder()
-                        .setTemperatureC(e.getTemperatureC())
-                        .setHumidity(e.getHumidity())
-                        .setCo2Level(e.getCo2Level())
+                        .setTemperatureC(p.getTemperatureC())
+                        .setHumidity(p.getHumidity())
+                        .setCo2Level(p.getCo2Level())
                         .build();
             }
-            case MOTION_SENSOR_EVENT -> {
-                MotionSensorEvent e = (MotionSensorEvent) event;
+            case MOTION_SENSOR -> {
+                MotionSensorProto p = event.getMotionSensor();
                 yield MotionSensorAvro.newBuilder()
-                        .setLinkQuality(e.getLinkQuality())
-                        .setMotion(e.isMotion())
-                        .setVoltage(e.getVoltage())
+                        .setLinkQuality(p.getLinkQuality())
+                        .setMotion(p.getMotion())
+                        .setVoltage(p.getVoltage())
                         .build();
             }
-            case TEMPERATURE_SENSOR_EVENT -> {
-                TemperatureSensorEvent e = (TemperatureSensorEvent) event;
+            case TEMPERATURE_SENSOR -> {
+                TemperatureSensorProto p = event.getTemperatureSensor();
                 yield TemperatureSensorAvro.newBuilder()
-                        .setId(e.getId())
-                        .setHubId(e.getHubId())
-                        .setTimestamp(e.getTimestamp().toEpochMilli())
-                        .setTemperatureC(e.getTemperatureC())
-                        .setTemperatureF(e.getTemperatureF())
+                        .setId(event.getId())
+                        .setHubId(event.getHubId())
+                        .setTimestamp(event.getTimestamp().getSeconds() * 1000 + event.getTimestamp().getNanos() / 1_000_000)
+                        .setTemperatureC(p.getTemperatureC())
+                        .setTemperatureF(p.getTemperatureF())
                         .build();
             }
+            default -> throw new IllegalArgumentException("Неизвестный тип события: " + event.getPayloadCase());
         };
 
         return SensorEventAvro.newBuilder()
                 .setId(event.getId())
                 .setHubId(event.getHubId())
-                .setTimestamp(event.getTimestamp().toEpochMilli())
+                .setTimestamp(event.getTimestamp().getSeconds() * 1000 + event.getTimestamp().getNanos() / 1_000_000)
                 .setPayload(payload)
                 .build();
     }
 
-    private HubEventAvro toHubAvro(HubEvent event) {
-        Object payload = switch (event.getType()) {
+    private HubEventAvro toHubAvro(HubEventProto event) {
+        Object payload = switch (event.getPayloadCase()) {
             case DEVICE_ADDED -> {
-                DeviceAddedEvent e = (DeviceAddedEvent) event;
+                DeviceAddedEventProto p = event.getDeviceAdded();
                 yield DeviceAddedEventAvro.newBuilder()
-                        .setId(e.getId())
-                        .setType(DeviceTypeAvro.valueOf(e.getDeviceType().name()))
+                        .setId(p.getId())
+                        .setType(DeviceTypeAvro.valueOf(p.getType().name()))
                         .build();
             }
             case DEVICE_REMOVED -> {
-                DeviceRemovedEvent e = (DeviceRemovedEvent) event;
+                DeviceRemovedEventProto p = event.getDeviceRemoved();
                 yield DeviceRemovedEventAvro.newBuilder()
-                        .setId(e.getId())
+                        .setId(p.getId())
                         .build();
             }
             case SCENARIO_ADDED -> {
-                ScenarioAddedEvent e = (ScenarioAddedEvent) event;
+                ScenarioAddedEventProto p = event.getScenarioAdded();
                 yield ScenarioAddedEventAvro.newBuilder()
-                        .setName(e.getName())
-                        .setConditions(e.getConditions().stream()
+                        .setName(p.getName())
+                        .setConditions(p.getConditionList().stream()
                                 .map(c -> ScenarioConditionAvro.newBuilder()
                                         .setSensorId(c.getSensorId())
                                         .setType(ConditionTypeAvro.valueOf(c.getType().name()))
                                         .setOperation(ConditionOperationAvro.valueOf(c.getOperation().name()))
-                                        .setValue(c.getValue())
+                                        .setValue(c.hasIntValue() ? c.getIntValue() : (c.getBoolValue() ? 1 : 0))
                                         .build())
                                 .toList())
-                        .setActions(e.getActions().stream()
+                        .setActions(p.getActionList().stream()
                                 .map(a -> DeviceActionAvro.newBuilder()
                                         .setSensorId(a.getSensorId())
                                         .setType(ActionTypeAvro.valueOf(a.getType().name()))
@@ -120,16 +121,17 @@ public class CollectorService {
                         .build();
             }
             case SCENARIO_REMOVED -> {
-                ScenarioRemovedEvent e = (ScenarioRemovedEvent) event;
+                ScenarioRemovedEventProto p = event.getScenarioRemoved();
                 yield ScenarioRemovedEventAvro.newBuilder()
-                        .setName(e.getName())
+                        .setName(p.getName())
                         .build();
             }
+            default -> throw new IllegalArgumentException("Неизвестный тип события: " + event.getPayloadCase());
         };
 
         return HubEventAvro.newBuilder()
                 .setHubId(event.getHubId())
-                .setTimestamp(event.getTimestamp().toEpochMilli())
+                .setTimestamp(event.getTimestamp().getSeconds() * 1000 + event.getTimestamp().getNanos() / 1_000_000)
                 .setPayload(payload)
                 .build();
     }
