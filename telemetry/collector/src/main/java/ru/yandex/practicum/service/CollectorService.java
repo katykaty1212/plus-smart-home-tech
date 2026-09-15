@@ -23,13 +23,13 @@ public class CollectorService {
     public void collectSensorEvent(SensorEventProto event) {
         SensorEventAvro avro = toSensorAvro(event);
         producerService.send(sensorsTopic, event.getHubId(),
-                event.getTimestamp().getSeconds() * 1000, avro);
+                event.getTimestamp().getSeconds() * 1000 + event.getTimestamp().getNanos() / 1_000_000, avro);
     }
 
     public void collectHubEvent(HubEventProto event) {
         HubEventAvro avro = toHubAvro(event);
         producerService.send(hubsTopic, event.getHubId(),
-                event.getTimestamp().getSeconds() * 1000, avro);
+                event.getTimestamp().getSeconds() * 1000 + event.getTimestamp().getNanos() / 1_000_000, avro);
     }
 
     private SensorEventAvro toSensorAvro(SensorEventProto event) {
@@ -68,7 +68,7 @@ public class CollectorService {
                 yield TemperatureSensorAvro.newBuilder()
                         .setId(event.getId())
                         .setHubId(event.getHubId())
-                        .setTimestamp(event.getTimestamp().getSeconds() * 1000)
+                        .setTimestamp(event.getTimestamp().getSeconds() * 1000 + event.getTimestamp().getNanos() / 1_000_000)
                         .setTemperatureC(p.getTemperatureC())
                         .setTemperatureF(p.getTemperatureF())
                         .build();
@@ -79,7 +79,7 @@ public class CollectorService {
         return SensorEventAvro.newBuilder()
                 .setId(event.getId())
                 .setHubId(event.getHubId())
-                .setTimestamp(event.getTimestamp().getSeconds() * 1000)
+                .setTimestamp(event.getTimestamp().getSeconds() * 1000 + event.getTimestamp().getNanos() / 1_000_000)
                 .setPayload(payload)
                 .build();
     }
@@ -131,7 +131,7 @@ public class CollectorService {
 
         return HubEventAvro.newBuilder()
                 .setHubId(event.getHubId())
-                .setTimestamp(event.getTimestamp().getSeconds() * 1000)
+                .setTimestamp(event.getTimestamp().getSeconds() * 1000 + event.getTimestamp().getNanos() / 1_000_000)
                 .setPayload(payload)
                 .build();
     }
