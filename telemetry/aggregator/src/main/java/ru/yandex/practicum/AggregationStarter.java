@@ -24,7 +24,7 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class AggregationStarter {
 
-    private final Consumer<Void, SensorEventAvro> consumer;
+    private final Consumer<String, SensorEventAvro> consumer;
     private final Producer<String, SpecificRecordBase> producer;
 
     private static final String SNAPSHOTS_TOPIC = "telemetry.snapshots.v1";
@@ -36,7 +36,7 @@ public class AggregationStarter {
             consumer.subscribe(List.of("telemetry.sensors.v1"));
 
             while (true) {
-                ConsumerRecords<Void, SensorEventAvro> records = consumer.poll(Duration.ofMillis(1000));
+                ConsumerRecords<String, SensorEventAvro> records = consumer.poll(Duration.ofMillis(1000));
                 for (var record : records) {
                     Optional<SensorsSnapshotAvro> snapshot = updateState(record.value());
                     snapshot.ifPresent(s -> {
@@ -71,17 +71,6 @@ public class AggregationStarter {
                         .setSensorsState(new HashMap<>())
                         .build()
         );
-
-        SensorStateAvro oldState = snapshot.getSensorsState().get(event.getId());
-
-        if (oldState != null) {
-            if (oldState.getTimestamp() >= event.getTimestamp()) {
-                return Optional.empty();
-            }
-            if (oldState.getData().equals(event.getPayload())) {
-                return Optional.empty();
-            }
-        }
 
         SensorStateAvro newState = SensorStateAvro.newBuilder()
                 .setTimestamp(event.getTimestamp())
