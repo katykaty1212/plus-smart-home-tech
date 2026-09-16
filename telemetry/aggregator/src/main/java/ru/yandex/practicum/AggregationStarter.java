@@ -75,7 +75,8 @@ public class AggregationStarter {
         SensorStateAvro oldState = snapshot.getSensorsState().get(event.getId());
 
         if (oldState != null) {
-            if (oldState.getTimestamp().toEpochMilli() >= event.getTimestamp().toEpochMilli()) {
+            if (oldState.getTimestamp().toEpochMilli() >= event.getTimestamp().toEpochMilli()
+                    || oldState.getData().equals(event.getPayload())) {
                 return Optional.empty();
             }
         }
