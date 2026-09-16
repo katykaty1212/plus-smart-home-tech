@@ -8,6 +8,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.errors.WakeupException;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import ru.yandex.practicum.kafka.telemetry.event.SensorEventAvro;
 import ru.yandex.practicum.kafka.telemetry.event.SensorStateAvro;
@@ -27,13 +28,18 @@ public class AggregationStarter {
     private final Consumer<String, SensorEventAvro> consumer;
     private final Producer<String, SpecificRecordBase> producer;
 
-    private static final String SNAPSHOTS_TOPIC = "telemetry.snapshots.v1";
+    @Value("${kafka.topics.sensors}")
+    private String sensorsTopic;
+
+    @Value("${kafka.topics.snapshots}")
+    private String snapshotsTopic;
+
     private final Map<String, SensorsSnapshotAvro> snapshots = new HashMap<>();
 
     public void start() {
         try {
             Runtime.getRuntime().addShutdownHook(new Thread(consumer::wakeup));
-            consumer.subscribe(List.of("telemetry.sensors.v1"));
+            consumer.subscribe(List.of(sensorsTopic));
 
             while (true) {
                 ConsumerRecords<String, SensorEventAvro> records = consumer.poll(Duration.ofMillis(100));
@@ -41,13 +47,21 @@ public class AggregationStarter {
                     Optional<SensorsSnapshotAvro> snapshot = updateState(record.value());
                     snapshot.ifPresent(s -> {
                         ProducerRecord<String, SpecificRecordBase> producerRecord =
-                                new ProducerRecord<>(SNAPSHOTS_TOPIC, s.getHubId(), s);
-                        producer.send(producerRecord);
-                        //producer.flush();
-                        log.info("Отправлен снапшот: {}", s);
+                                new ProducerRecord<>(snapshotsTopic, s.getHubId(), s);
+                        producer.send(producerRecord, (metadata, exception) -> {
+                            if (exception != null) {
+                                log.error("Ошибка отправки снапшота в топик {}", snapshotsTopic, exception);
+                            } else {
+                                log.info("Отправлен снапшот: {}", s);
+                            }
+                        });
                     });
                 }
-                consumer.commitAsync();
+                consumer.commitAsync((offsets, exception) -> {
+                    if (exception != null) {
+                        log.error("Ошибка коммита оффсетов: {}", offsets, exception);
+                    }
+                });
             }
         } catch (WakeupException ignored) {
         } catch (Exception e) {
@@ -57,26 +71,26 @@ public class AggregationStarter {
                 consumer.commitSync();
             } finally {
                 consumer.close();
+                producer.flush();
                 producer.close();
             }
         }
     }
 
     private Optional<SensorsSnapshotAvro> updateState(SensorEventAvro event) {
-        SensorsSnapshotAvro snapshot = snapshots.computeIfAbsent(
-                event.getHubId(),
-                hubId -> SensorsSnapshotAvro.newBuilder()
-                        .setHubId(hubId)
-                        .setTimestamp(event.getTimestamp())
-                        .setSensorsState(new HashMap<>())
-                        .build()
-        );
+        SensorsSnapshotAvro oldSnapshot = snapshots.get(event.getHubId());
 
-        SensorStateAvro oldState = snapshot.getSensorsState().get(event.getId());
+        Map<String, SensorStateAvro> newSensorsState = oldSnapshot != null
+                ? new HashMap<>(oldSnapshot.getSensorsState())
+                : new HashMap<>();
+
+        SensorStateAvro oldState = newSensorsState.get(event.getId());
 
         if (oldState != null) {
-            if (oldState.getTimestamp().toEpochMilli() >= event.getTimestamp().toEpochMilli()
-                    || oldState.getData().equals(event.getPayload())) {
+            boolean sameTimestamp = !oldState.getTimestamp().isBefore(event.getTimestamp());
+            boolean sameData = oldState.getData().toString().equals(event.getPayload().toString());
+
+            if (sameTimestamp || sameData) {
                 return Optional.empty();
             }
         }
@@ -86,9 +100,15 @@ public class AggregationStarter {
                 .setData(event.getPayload())
                 .build();
 
-        snapshot.getSensorsState().put(event.getId(), newState);
-        snapshot.setTimestamp(event.getTimestamp());
+        newSensorsState.put(event.getId(), newState);
 
-        return Optional.of(snapshot);
+        SensorsSnapshotAvro newSnapshot = SensorsSnapshotAvro.newBuilder()
+                .setHubId(event.getHubId())
+                .setTimestamp(event.getTimestamp())
+                .setSensorsState(newSensorsState)
+                .build();
+
+        snapshots.put(event.getHubId(), newSnapshot);
+        return Optional.of(newSnapshot);
     }
 }
