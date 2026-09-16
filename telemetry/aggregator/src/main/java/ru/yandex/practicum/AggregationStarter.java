@@ -72,14 +72,6 @@ public class AggregationStarter {
                         .build()
         );
 
-        SensorStateAvro oldState = snapshot.getSensorsState().get(event.getId());
-
-        if (oldState != null) {
-            if (oldState.getTimestamp().toEpochMilli() >= event.getTimestamp().toEpochMilli()) {
-                return Optional.empty();
-            }
-        }
-
         SensorStateAvro newState = SensorStateAvro.newBuilder()
                 .setTimestamp(event.getTimestamp())
                 .setData(event.getPayload())
