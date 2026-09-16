@@ -77,6 +77,9 @@ public class AggregationStarter {
             if (oldState.getTimestamp() >= event.getTimestamp()) {
                 return Optional.empty();
             }
+            if (oldState.getData().toString().equals(event.getPayload().toString())) {
+                return Optional.empty();
+            }
         }
 
         SensorStateAvro newState = SensorStateAvro.newBuilder()
