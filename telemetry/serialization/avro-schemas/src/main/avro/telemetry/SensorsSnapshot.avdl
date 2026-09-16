@@ -5,12 +5,12 @@ protocol SensorsSnapshotProtocol {
 
 	record SensorsSnapshotAvro {
 		string hubId;
-		long timestamp;
+		timestamp_ms timestamp;
 		map<SensorStateAvro> sensorsState;
 	}
 
 	record SensorStateAvro {
-		long timestamp;
+		timestamp_ms timestamp;
 		union {
 			ClimateSensorAvro,
 			LightSensorAvro,

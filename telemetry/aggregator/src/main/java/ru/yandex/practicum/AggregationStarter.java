@@ -43,7 +43,6 @@ public class AggregationStarter {
                         ProducerRecord<String, SpecificRecordBase> producerRecord =
                                 new ProducerRecord<>(SNAPSHOTS_TOPIC, s.getHubId(), s);
                         producer.send(producerRecord);
-                        producer.flush();
                         log.info("Отправлен снапшот: {}", s);
                     });
                 }
@@ -75,7 +74,7 @@ public class AggregationStarter {
         SensorStateAvro oldState = snapshot.getSensorsState().get(event.getId());
 
         if (oldState != null) {
-            if (oldState.getTimestamp() >= event.getTimestamp()) {
+            if (oldState.getTimestamp().compareTo(event.getTimestamp()) >= 0) {
                 return Optional.empty();
             }
         }

@@ -7,6 +7,8 @@ import org.springframework.stereotype.Service;
 import ru.yandex.practicum.grpc.telemetry.event.*;
 import ru.yandex.practicum.kafka.telemetry.event.*;
 
+import java.time.Instant;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -68,7 +70,9 @@ public class CollectorService {
                 yield TemperatureSensorAvro.newBuilder()
                         .setId(event.getId())
                         .setHubId(event.getHubId())
-                        .setTimestamp(event.getTimestamp().getSeconds() * 1000 + event.getTimestamp().getNanos() / 1_000_000)
+                        .setTimestamp(Instant.ofEpochSecond(
+                                event.getTimestamp().getSeconds(),
+                                event.getTimestamp().getNanos()))
                         .setTemperatureC(p.getTemperatureC())
                         .setTemperatureF(p.getTemperatureF())
                         .build();
@@ -79,7 +83,9 @@ public class CollectorService {
         return SensorEventAvro.newBuilder()
                 .setId(event.getId())
                 .setHubId(event.getHubId())
-                .setTimestamp(event.getTimestamp().getSeconds() * 1000 + event.getTimestamp().getNanos() / 1_000_000)
+                .setTimestamp(Instant.ofEpochSecond(
+                        event.getTimestamp().getSeconds(),
+                        event.getTimestamp().getNanos()))
                 .setPayload(payload)
                 .build();
     }
@@ -131,7 +137,9 @@ public class CollectorService {
 
         return HubEventAvro.newBuilder()
                 .setHubId(event.getHubId())
-                .setTimestamp(event.getTimestamp().getSeconds() * 1000 + event.getTimestamp().getNanos() / 1_000_000)
+                .setTimestamp(Instant.ofEpochSecond(
+                        event.getTimestamp().getSeconds(),
+                        event.getTimestamp().getNanos()))
                 .setPayload(payload)
                 .build();
     }
