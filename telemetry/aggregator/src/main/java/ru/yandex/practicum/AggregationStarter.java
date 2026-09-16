@@ -28,7 +28,7 @@ public class AggregationStarter {
     private final Producer<String, SpecificRecordBase> producer;
 
     private static final String SNAPSHOTS_TOPIC = "telemetry.snapshots.v1";
-    private static final Map<String, SensorsSnapshotAvro> snapshots = new HashMap<>();
+    private final Map<String, SensorsSnapshotAvro> snapshots = new HashMap<>();
 
     public void start() {
         try {
@@ -43,6 +43,7 @@ public class AggregationStarter {
                         ProducerRecord<String, SpecificRecordBase> producerRecord =
                                 new ProducerRecord<>(SNAPSHOTS_TOPIC, s.getHubId(), s);
                         producer.send(producerRecord);
+                        producer.flush();
                         log.info("Отправлен снапшот: {}", s);
                     });
                 }
@@ -62,7 +63,6 @@ public class AggregationStarter {
     }
 
     private Optional<SensorsSnapshotAvro> updateState(SensorEventAvro event) {
-        // 1. Получаем или создаём снапшот для хаба
         SensorsSnapshotAvro snapshot = snapshots.computeIfAbsent(
                 event.getHubId(),
                 hubId -> SensorsSnapshotAvro.newBuilder()
@@ -72,32 +72,25 @@ public class AggregationStarter {
                         .build()
         );
 
-        // 2. Получаем старое состояние датчика
         SensorStateAvro oldState = snapshot.getSensorsState().get(event.getId());
 
-        // 3. Если старое состояние есть — проверяем timestamp
         if (oldState != null) {
-            // Если старое состояние новее или равно — игнорируем
             if (oldState.getTimestamp() >= event.getTimestamp()) {
                 return Optional.empty();
             }
-            // Если данные не изменились — игнорируем
             if (oldState.getData().equals(event.getPayload())) {
                 return Optional.empty();
             }
         }
 
-        // 4. Создаём новое состояние
         SensorStateAvro newState = SensorStateAvro.newBuilder()
                 .setTimestamp(event.getTimestamp())
                 .setData(event.getPayload())
                 .build();
 
-        // 5. Обновляем снапшот
         snapshot.getSensorsState().put(event.getId(), newState);
         snapshot.setTimestamp(event.getTimestamp());
 
-        // 6. Возвращаем обновлённый снапшот
         return Optional.of(snapshot);
     }
 }
