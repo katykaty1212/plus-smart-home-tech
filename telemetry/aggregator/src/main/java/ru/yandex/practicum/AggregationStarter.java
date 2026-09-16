@@ -36,14 +36,13 @@ public class AggregationStarter {
             consumer.subscribe(List.of("telemetry.sensors.v1"));
 
             while (true) {
-                ConsumerRecords<String, SensorEventAvro> records = consumer.poll(Duration.ofMillis(1000));
+                ConsumerRecords<String, SensorEventAvro> records = consumer.poll(Duration.ofMillis(100));
                 for (var record : records) {
                     Optional<SensorsSnapshotAvro> snapshot = updateState(record.value());
                     snapshot.ifPresent(s -> {
                         ProducerRecord<String, SpecificRecordBase> producerRecord =
                                 new ProducerRecord<>(SNAPSHOTS_TOPIC, s.getHubId(), s);
-                        producer.send(producerRecord);
-                        producer.flush();
+                        producer.send(producerRecord);  // ← убрал flush()
                         log.info("Отправлен снапшот: {}", s);
                     });
                 }
