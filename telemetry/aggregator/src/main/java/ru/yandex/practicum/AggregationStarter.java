@@ -70,7 +70,9 @@ public class AggregationStarter {
             try {
                 consumer.commitSync();
             } finally {
+                log.info("Закрываем консьюмер");
                 consumer.close();
+                log.info("Закрываем продюсер");
                 producer.flush();
                 producer.close();
             }
@@ -87,10 +89,12 @@ public class AggregationStarter {
         SensorStateAvro oldState = newSensorsState.get(event.getId());
 
         if (oldState != null) {
-            boolean sameTimestamp = !oldState.getTimestamp().isBefore(event.getTimestamp());
-            boolean sameData = oldState.getData().toString().equals(event.getPayload().toString());
+            boolean olderEvent = oldState.getTimestamp().toEpochMilli()
+                    > event.getTimestamp().toEpochMilli();
+            boolean sameData = oldState.getData().toString()
+                    .equals(event.getPayload().toString());
 
-            if (sameTimestamp || sameData) {
+            if (olderEvent || sameData) {
                 return Optional.empty();
             }
         }
