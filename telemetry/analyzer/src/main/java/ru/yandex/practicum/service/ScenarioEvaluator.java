@@ -65,7 +65,15 @@ public class ScenarioEvaluator {
             case MOTION -> data instanceof MotionSensorAvro m ? (m.getMotion() ? 1 : 0) : null;
             case LUMINOSITY -> data instanceof LightSensorAvro l ? l.getLuminosity() : null;
             case SWITCH -> data instanceof SwitchSensorAvro s ? (s.getState() ? 1 : 0) : null;
-            case TEMPERATURE -> data instanceof TemperatureSensorAvro t ? t.getTemperatureC() : null;
+            case TEMPERATURE -> {
+                if (data instanceof TemperatureSensorAvro t) {
+                    yield t.getTemperatureC();
+                } else if (data instanceof ClimateSensorAvro c) {
+                    yield c.getTemperatureC();
+                } else {
+                    yield null;
+                }
+            }
             case CO2LEVEL -> data instanceof ClimateSensorAvro c ? c.getCo2Level() : null;
             case HUMIDITY -> data instanceof ClimateSensorAvro c ? c.getHumidity() : null;
         };
