@@ -1,6 +1,5 @@
 package ru.yandex.practicum.processor;
 
-import com.google.protobuf.Timestamp;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.Consumer;
@@ -8,16 +7,10 @@ import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.common.errors.WakeupException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-import ru.yandex.practicum.grpc.HubRouterClient;
-import ru.yandex.practicum.grpc.telemetry.event.ActionTypeProto;
-import ru.yandex.practicum.grpc.telemetry.event.DeviceActionProto;
 import ru.yandex.practicum.kafka.telemetry.event.SensorsSnapshotAvro;
-import ru.yandex.practicum.model.Scenario;
-import ru.yandex.practicum.repository.ScenarioRepository;
-import ru.yandex.practicum.service.ScenarioEvaluator;
+import ru.yandex.practicum.service.SnapshotService;
 
 import java.time.Duration;
-import java.time.Instant;
 import java.util.List;
 
 @Slf4j
@@ -26,9 +19,7 @@ import java.util.List;
 public class SnapshotProcessor {
 
     private final Consumer<String, SensorsSnapshotAvro> snapshotConsumer;
-    private final ScenarioRepository scenarioRepository;
-    private final ScenarioEvaluator scenarioEvaluator;
-    private final HubRouterClient hubRouterClient;
+    private final SnapshotService snapshotService;
 
     @Value("${kafka.topics.snapshots}")
     private String snapshotsTopic;
@@ -44,7 +35,7 @@ public class SnapshotProcessor {
 
                 for (var record : records) {
                     try {
-                        processSnapshot(record.value());
+                        snapshotService.processSnapshot(record.value());
                     } catch (Exception e) {
                         log.error("Ошибка обработки снапшота: {}", record.value(), e);
                     }
@@ -64,43 +55,6 @@ public class SnapshotProcessor {
                 log.info("Закрываем консьюмер снапшотов");
                 snapshotConsumer.close();
             }
-        }
-    }
-
-    private void processSnapshot(SensorsSnapshotAvro snapshot) {
-        String hubId = snapshot.getHubId();
-        List<Scenario> scenarios = scenarioRepository.findByHubId(hubId);
-        if (scenarios.isEmpty()) {
-            log.debug("Для хаба {} нет сценариев", hubId);
-            return;
-        }
-
-        var matched = scenarioEvaluator.evaluate(snapshot, scenarios);
-        if (matched.isEmpty()) {
-            log.debug("Ни один сценарий хаба {} не сработал", hubId);
-            return;
-        }
-
-        Instant eventTime = snapshot.getTimestamp();
-        Timestamp grpcTimestamp = Timestamp.newBuilder()
-                .setSeconds(eventTime.getEpochSecond())
-                .setNanos(eventTime.getNano())
-                .build();
-
-        for (var m : matched) {
-            DeviceActionProto.Builder actionBuilder = DeviceActionProto.newBuilder()
-                    .setSensorId(m.sensor().getId())
-                    .setType(ActionTypeProto.valueOf(m.action().getType().name()));
-
-            if (m.action().getValue() != null) {
-                actionBuilder.setValue(m.action().getValue());
-            }
-
-            hubRouterClient.sendAction(
-                    hubId,
-                    m.scenario().getName(),
-                    actionBuilder.build(),
-                    grpcTimestamp);
         }
     }
 }
