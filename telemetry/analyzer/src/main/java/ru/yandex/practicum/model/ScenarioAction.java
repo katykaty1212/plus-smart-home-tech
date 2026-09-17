@@ -30,13 +30,13 @@ public class ScenarioAction {
     private Action action;
 
     public static class Pk implements Serializable {
-        private Long scenario;
-        private String sensor;
-        private Long action;
+        private Scenario scenario;
+        private Sensor sensor;
+        private Action action;
 
         public Pk() {}
 
-        public Pk(Long scenario, String sensor, Long action) {
+        public Pk(Scenario scenario, Sensor sensor, Action action) {
             this.scenario = scenario;
             this.sensor = sensor;
             this.action = action;

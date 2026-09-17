@@ -59,14 +59,15 @@ public class HubEventService {
     }
 
     private void addScenario(String hubId, ScenarioAddedEventAvro event) {
-        // если сценарий с таким именем уже есть — обновляем (удаляем старый и создаём новый)
         scenarioRepository.findByHubIdAndName(hubId, event.getName())
-                .ifPresent(scenarioRepository::delete);
+                .ifPresent(s -> {
+                    scenarioRepository.delete(s);
+                    scenarioRepository.flush();
+                });
 
         Scenario scenario = new Scenario();
         scenario.setHubId(hubId);
         scenario.setName(event.getName());
-        scenarioRepository.save(scenario);
 
         List<ScenarioCondition> scenarioConditions = new ArrayList<>();
         for (ScenarioConditionAvro cond : event.getConditions()) {
@@ -113,9 +114,11 @@ public class HubEventService {
 
         scenario.setConditions(scenarioConditions);
         scenario.setActions(scenarioActions);
-        scenarioRepository.save(scenario);
 
-        log.info("Добавлен сценарий {} для хаба {}", event.getName(), hubId);
+        scenarioRepository.save(scenario);   // ← ЕДИНСТВЕННОЕ сохранение, ПОСЛЕ заполнения
+
+        log.info("Сохранён сценарий {} для хаба {} (conditions={}, actions={})",
+                event.getName(), hubId, scenarioConditions.size(), scenarioActions.size());
     }
 
     private void removeScenario(String hubId, ScenarioRemovedEventAvro event) {

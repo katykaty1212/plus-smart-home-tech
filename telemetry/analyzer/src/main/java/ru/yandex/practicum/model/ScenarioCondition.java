@@ -30,13 +30,13 @@ public class ScenarioCondition {
     private Condition condition;
 
     public static class Pk implements Serializable {
-        private Long scenario;
-        private String sensor;
-        private Long condition;
+        private Scenario scenario;
+        private Sensor sensor;
+        private Condition condition;
 
         public Pk() {}
 
-        public Pk(Long scenario, String sensor, Long condition) {
+        public Pk(Scenario scenario, Sensor sensor, Condition condition) {
             this.scenario = scenario;
             this.sensor = sensor;
             this.condition = condition;
