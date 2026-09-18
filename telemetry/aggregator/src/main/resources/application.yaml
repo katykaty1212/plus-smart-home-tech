@@ -1,6 +1,3 @@
-server:
-  port: 8080
-
 spring:
   kafka:
     bootstrap-servers: localhost:9092
@@ -8,8 +5,4 @@ spring:
 kafka:
   topics:
     sensors: telemetry.sensors.v1
-    hubs: telemetry.hubs.v1
-
-grpc:
-  server:
-    port: 59091
+    snapshots: telemetry.snapshots.v1
