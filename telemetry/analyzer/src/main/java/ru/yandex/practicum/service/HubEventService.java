@@ -11,9 +11,9 @@ import ru.yandex.practicum.repository.ConditionRepository;
 import ru.yandex.practicum.repository.ScenarioRepository;
 import ru.yandex.practicum.repository.SensorRepository;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -65,14 +65,25 @@ public class HubEventService {
                     scenarioRepository.flush();
                 });
 
+        // Собираем все sensorId из условий и действий
+        Set<String> sensorIds = new HashSet<>();
+        event.getConditions().forEach(c -> sensorIds.add(c.getSensorId()));
+        event.getActions().forEach(a -> sensorIds.add(a.getSensorId()));
+
+        // Один запрос ко всем датчикам вместо N запросов в цикле
+        Map<String, Sensor> sensorsById = sensorRepository
+                .findAllByIdInAndHubId(sensorIds, hubId)
+                .stream()
+                .collect(Collectors.toMap(Sensor::getId, Function.identity()));
+
         Scenario scenario = new Scenario();
         scenario.setHubId(hubId);
         scenario.setName(event.getName());
 
         List<ScenarioCondition> scenarioConditions = new ArrayList<>();
         for (ScenarioConditionAvro cond : event.getConditions()) {
-            Optional<Sensor> sensor = sensorRepository.findByIdAndHubId(cond.getSensorId(), hubId);
-            if (sensor.isEmpty()) {
+            Sensor sensor = sensorsById.get(cond.getSensorId());
+            if (sensor == null) {
                 log.warn("Датчик {} не найден в хабе {}, условие пропущено",
                         cond.getSensorId(), hubId);
                 continue;
@@ -86,15 +97,15 @@ public class HubEventService {
 
             ScenarioCondition sc = new ScenarioCondition();
             sc.setScenario(scenario);
-            sc.setSensor(sensor.get());
+            sc.setSensor(sensor);
             sc.setCondition(condition);
             scenarioConditions.add(sc);
         }
 
         List<ScenarioAction> scenarioActions = new ArrayList<>();
         for (DeviceActionAvro act : event.getActions()) {
-            Optional<Sensor> sensor = sensorRepository.findByIdAndHubId(act.getSensorId(), hubId);
-            if (sensor.isEmpty()) {
+            Sensor sensor = sensorsById.get(act.getSensorId());
+            if (sensor == null) {
                 log.warn("Датчик {} не найден в хабе {}, действие пропущено",
                         act.getSensorId(), hubId);
                 continue;
@@ -107,7 +118,7 @@ public class HubEventService {
 
             ScenarioAction sa = new ScenarioAction();
             sa.setScenario(scenario);
-            sa.setSensor(sensor.get());
+            sa.setSensor(sensor);
             sa.setAction(action);
             scenarioActions.add(sa);
         }
@@ -115,7 +126,7 @@ public class HubEventService {
         scenario.setConditions(scenarioConditions);
         scenario.setActions(scenarioActions);
 
-        scenarioRepository.save(scenario);   // ← ЕДИНСТВЕННОЕ сохранение, ПОСЛЕ заполнения
+        scenarioRepository.save(scenario);
 
         log.info("Сохранён сценарий {} для хаба {} (conditions={}, actions={})",
                 event.getName(), hubId, scenarioConditions.size(), scenarioActions.size());

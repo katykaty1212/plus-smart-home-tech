@@ -22,18 +22,29 @@ spring:
       mode: always
       schema-locations: classpath:schema.sql
 
+analyzer:
   kafka:
-    bootstrap-servers: localhost:9092
-
-kafka:
-  topics:
-    hubs: telemetry.hubs.v1
-    snapshots: telemetry.snapshots.v1
-  consumer:
+    bootstrap-servers: "localhost:9092"
     hub-event:
-      group-id: analyzer-hub-event-group
+      topic: "telemetry.hubs.v1"
+      poll-timeout: 1000ms
+      properties:
+        "bootstrap.servers": ${analyzer.kafka.bootstrap-servers}
+        "group.id": "analyzer-hub-event-group"
+        "enable.auto.commit": false
+        "auto.offset.reset": earliest
+        "key.deserializer": "org.apache.kafka.common.serialization.StringDeserializer"
+        "value.deserializer": "ru.yandex.practicum.deserializer.HubEventDeserializer"
     snapshot:
-      group-id: analyzer-snapshot-group
+      topic: "telemetry.snapshots.v1"
+      poll-timeout: 1000ms
+      properties:
+        "bootstrap.servers": ${analyzer.kafka.bootstrap-servers}
+        "group.id": "analyzer-snapshot-group"
+        "enable.auto.commit": false
+        "auto.offset.reset": earliest
+        "key.deserializer": "org.apache.kafka.common.serialization.StringDeserializer"
+        "value.deserializer": "ru.yandex.practicum.deserializer.SensorsSnapshotDeserializer"
 
 grpc:
   client:

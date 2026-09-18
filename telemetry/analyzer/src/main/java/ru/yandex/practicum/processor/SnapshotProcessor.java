@@ -5,12 +5,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.common.errors.WakeupException;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import ru.yandex.practicum.config.AnalyzerKafkaConfig;
 import ru.yandex.practicum.kafka.telemetry.event.SensorsSnapshotAvro;
 import ru.yandex.practicum.service.SnapshotService;
 
-import java.time.Duration;
 import java.util.List;
 
 @Slf4j
@@ -20,18 +19,16 @@ public class SnapshotProcessor {
 
     private final Consumer<String, SensorsSnapshotAvro> snapshotConsumer;
     private final SnapshotService snapshotService;
-
-    @Value("${kafka.topics.snapshots}")
-    private String snapshotsTopic;
+    private final AnalyzerKafkaConfig kafkaConfig;
 
     public void start() {
         try {
             Runtime.getRuntime().addShutdownHook(new Thread(snapshotConsumer::wakeup));
-            snapshotConsumer.subscribe(List.of(snapshotsTopic));
+            snapshotConsumer.subscribe(List.of(kafkaConfig.getSnapshot().getTopic()));
 
             while (true) {
                 ConsumerRecords<String, SensorsSnapshotAvro> records =
-                        snapshotConsumer.poll(Duration.ofMillis(1000));
+                        snapshotConsumer.poll(kafkaConfig.getSnapshot().getPollTimeout());
 
                 for (var record : records) {
                     try {
