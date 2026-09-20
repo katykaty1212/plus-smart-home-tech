@@ -1,26 +1,53 @@
 package ru.yandex.practicum.controller;
 
-import jakarta.validation.Valid;
+import com.google.protobuf.Empty;
+import io.grpc.Status;
+import io.grpc.StatusRuntimeException;
+import io.grpc.stub.StreamObserver;
 import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.*;
-import ru.yandex.practicum.model.HubEvent;
-import ru.yandex.practicum.model.SensorEvent;
+import lombok.extern.slf4j.Slf4j;
+import net.devh.boot.grpc.server.service.GrpcService;
+import ru.yandex.practicum.grpc.telemetry.collector.CollectorControllerGrpc;
+import ru.yandex.practicum.grpc.telemetry.event.HubEventProto;
+import ru.yandex.practicum.grpc.telemetry.event.SensorEventProto;
 import ru.yandex.practicum.service.CollectorService;
 
-@RestController
-@RequestMapping("/events")
+@Slf4j
+@GrpcService
 @RequiredArgsConstructor
-public class EventController {
+public class EventController extends CollectorControllerGrpc.CollectorControllerImplBase {
 
     private final CollectorService collectorService;
 
-    @PostMapping("/sensors")
-    public void collectSensorEvent(@Valid @RequestBody SensorEvent event) {
-        collectorService.collectSensorEvent(event);
+    @Override
+    public void collectSensorEvent(SensorEventProto request, StreamObserver<Empty> responseObserver) {
+        try {
+            log.info("Получено событие датчика: {}", request);
+            collectorService.collectSensorEvent(request);
+            responseObserver.onNext(Empty.getDefaultInstance());
+            responseObserver.onCompleted();
+        } catch (Exception e) {
+            responseObserver.onError(new StatusRuntimeException(
+                    Status.INTERNAL
+                            .withDescription(e.getLocalizedMessage())
+                            .withCause(e)
+            ));
+        }
     }
 
-    @PostMapping("/hubs")
-    public void collectHubEvent(@Valid @RequestBody HubEvent event) {
-        collectorService.collectHubEvent(event);
+    @Override
+    public void collectHubEvent(HubEventProto request, StreamObserver<Empty> responseObserver) {
+        try {
+            log.info("Получено событие хаба: {}", request);
+            collectorService.collectHubEvent(request);
+            responseObserver.onNext(Empty.getDefaultInstance());
+            responseObserver.onCompleted();
+        } catch (Exception e) {
+            responseObserver.onError(new StatusRuntimeException(
+                    Status.INTERNAL
+                            .withDescription(e.getLocalizedMessage())
+                            .withCause(e)
+            ));
+        }
     }
 }
