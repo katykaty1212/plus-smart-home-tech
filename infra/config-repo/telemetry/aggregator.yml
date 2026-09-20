@@ -1,0 +1,13 @@
+aggregator:
+  kafka:
+    consumer:
+      poll-timeout: 100ms
+
+spring:
+  kafka:
+    bootstrap-servers: localhost:9092
+
+kafka:
+  topics:
+    sensors: telemetry.sensors.v1
+    snapshots: telemetry.snapshots.v1
