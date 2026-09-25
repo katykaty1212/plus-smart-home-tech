@@ -44,10 +44,7 @@ public class InventoryService {
                     "Складская запись для товара " + request.productId() + " уже существует");
         }
 
-        Inventory inventory = new Inventory();
-        inventory.setProductId(request.productId());
-        inventory.setQuantity(request.quantity());
-        inventory.setReservedQuantity(0);
+        Inventory inventory = inventoryMapper.toEntity(request);
 
         inventoryRepository.save(inventory);
         return inventoryMapper.toDto(inventory);
@@ -79,12 +76,11 @@ public class InventoryService {
 
         inventory.setReservedQuantity(inventory.getReservedQuantity() + request.quantity());
 
-        int newAvailable = inventory.getQuantity() - inventory.getReservedQuantity();
+        Inventory saved = inventoryRepository.save(inventory);
 
         return new ReserveResponse(
                 true,
-                newAvailable,
-                "Товар успешно зарезервирован"
-        );
+                saved.getAvailableQuantity(),
+                "Товар успешно зарезервирован");
     }
 }

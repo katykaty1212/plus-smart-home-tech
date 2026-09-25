@@ -13,7 +13,6 @@ import ru.yandex.practicum.order.mapper.OrderMapper;
 import ru.yandex.practicum.order.repository.OrderRepository;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
@@ -46,12 +45,7 @@ public class OrderService {
 
     @Transactional
     public OrderDto create(CreateOrderRequest request) {
-        Order order = new Order();
-        order.setCustomerName(request.customerName());
-        order.setCustomerEmail(request.customerEmail());
-        order.setStatus("CREATED");
-        order.setStatusDetails(null);
-        order.setCreatedAt(LocalDateTime.now());
+        Order order = orderMapper.toEntity(request);
 
         BigDecimal totalPrice = BigDecimal.ZERO;
 

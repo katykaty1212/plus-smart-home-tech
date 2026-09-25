@@ -35,7 +35,7 @@ public class OrderController {
     }
 
     @GetMapping("/by-email")
-    public List<OrderDto> getByEmail(@RequestParam("email") String email) {
+    public List<OrderDto> getByEmail(@RequestParam String email) {
         return orderService.getByEmail(email);
     }
 

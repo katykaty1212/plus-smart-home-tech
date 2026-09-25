@@ -32,4 +32,8 @@ public class Inventory {
     @Version
     @Column(nullable = false)
     private Long version;
+
+    public int getAvailableQuantity() {
+        return quantity - reservedQuantity;
+    }
 }
