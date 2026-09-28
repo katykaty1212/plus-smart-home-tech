@@ -3,16 +3,12 @@ package ru.yandex.practicum.order.service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import ru.yandex.practicum.order.dto.CreateOrderRequest;
 import ru.yandex.practicum.order.dto.OrderDto;
-import ru.yandex.practicum.order.dto.OrderItemRequest;
 import ru.yandex.practicum.order.entity.Order;
-import ru.yandex.practicum.order.entity.OrderItem;
 import ru.yandex.practicum.order.exception.NotFoundException;
 import ru.yandex.practicum.order.mapper.OrderMapper;
 import ru.yandex.practicum.order.repository.OrderRepository;
 
-import java.math.BigDecimal;
 import java.util.List;
 
 @Service
@@ -44,28 +40,8 @@ public class OrderService {
     }
 
     @Transactional
-    public OrderDto create(CreateOrderRequest request) {
-        Order order = orderMapper.toEntity(request);
-
-        BigDecimal totalPrice = BigDecimal.ZERO;
-
-        for (OrderItemRequest itemRequest : request.items()) {
-            OrderItem item = new OrderItem();
-            item.setOrder(order);
-            item.setProductId(itemRequest.productId());
-            item.setProductName(itemRequest.productName());
-            item.setQuantity(itemRequest.quantity());
-            item.setPrice(itemRequest.price());
-            order.getItems().add(item);
-
-            BigDecimal lineTotal = itemRequest.price()
-                    .multiply(BigDecimal.valueOf(itemRequest.quantity()));
-            totalPrice = totalPrice.add(lineTotal);
-        }
-
-        order.setTotalPrice(totalPrice);
-
-        orderRepository.save(order);
-        return orderMapper.toDto(order);
+    public OrderDto saveOrder(Order order) {
+        Order saved = orderRepository.save(order);
+        return orderMapper.toDto(saved);
     }
 }
