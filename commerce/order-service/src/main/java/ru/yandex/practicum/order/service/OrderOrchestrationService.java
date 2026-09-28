@@ -9,7 +9,9 @@ import ru.yandex.practicum.order.dto.OrderDto;
 import ru.yandex.practicum.order.dto.OrderItemRequest;
 import ru.yandex.practicum.order.entity.Order;
 import ru.yandex.practicum.order.entity.OrderItem;
+import ru.yandex.practicum.order.exception.InventoryServiceUnavailableException;
 import ru.yandex.practicum.order.exception.OrderProcessingException;
+import ru.yandex.practicum.order.exception.ProductServiceUnavailableException;
 import ru.yandex.practicum.order.feign.InventoryClient;
 import ru.yandex.practicum.order.feign.ProductClient;
 import ru.yandex.practicum.order.feign.ProductDto;
@@ -33,103 +35,150 @@ public class OrderOrchestrationService {
     private final InventoryClient inventoryClient;
 
     public OrderDto createOrder(CreateOrderRequest request) {
-        // 1. Получаем товары (по одному разу на productId)
-        Map<Long, ProductDto> productsById = new HashMap<>();
+        // 1. Получаем товары (кэш на время запроса)
+        Map<Long, ServiceCallResult<ProductDto>> productResults = new HashMap<>();
         for (OrderItemRequest item : request.items()) {
-            productsById.computeIfAbsent(item.productId(), this::fetchProduct);
+            productResults.computeIfAbsent(item.productId(), this::fetchProduct);
         }
 
-        // 2. Проверяем активность
-        for (ProductDto product : productsById.values()) {
-            if (!Boolean.TRUE.equals(product.active())) {
-                throw new OrderProcessingException(
-                        "Товар с id=" + product.id() + " снят с продажи");
+        // 2. Проверяем бизнес-отказы по товарам
+        for (ServiceCallResult<ProductDto> result : productResults.values()) {
+            if (result instanceof ServiceCallResult.Failure<ProductDto> failure) {
+                throw new OrderProcessingException(failure.message());
             }
         }
 
-        // 3. Группируем позиции по productId — суммарное количество
+        // 3. Проверяем active у успешно полученных товаров
+        for (ServiceCallResult<ProductDto> result : productResults.values()) {
+            if (result instanceof ServiceCallResult.Success<ProductDto> success) {
+                ProductDto product = success.value();
+                if (!Boolean.TRUE.equals(product.active())) {
+                    throw new OrderProcessingException(
+                            "Товар с id=" + product.id() + " снят с продажи");
+                }
+            }
+        }
+
+        // 4. Группируем по productId — суммарное количество
         Map<Long, Integer> totalQuantityByProduct = new HashMap<>();
         for (OrderItemRequest item : request.items()) {
             totalQuantityByProduct.merge(item.productId(), item.quantity(), Integer::sum);
         }
 
-        // 4. Резервируем — храним успешные резервы для компенсации
+        // 5. Резервируем
         List<ReserveRequest> reserved = new ArrayList<>();
-        try {
-            for (Map.Entry<Long, Integer> entry : totalQuantityByProduct.entrySet()) {
-                ReserveRequest reserveRequest = new ReserveRequest(entry.getKey(), entry.getValue());
-                ReserveResponse response = reserveStock(reserveRequest);
-                if (response.success()) {
-                    reserved.add(reserveRequest);
+        boolean anyDegraded = false;
+
+        for (Map.Entry<Long, Integer> entry : totalQuantityByProduct.entrySet()) {
+            ReserveRequest reserveRequest = new ReserveRequest(entry.getKey(), entry.getValue());
+            ServiceCallResult<ReserveResponse> result = reserveStock(reserveRequest);
+
+            if (result instanceof ServiceCallResult.Failure<ReserveResponse> failure) {
+                // Бизнес-отказ — компенсируем и отклоняем
+                compensateReserved(reserved);
+                throw new OrderProcessingException(failure.message());
+            }
+
+            if (result instanceof ServiceCallResult.Degraded<ReserveResponse>) {
+                anyDegraded = true;
+                // Не добавляем в reserved — резерв не подтверждён
+                continue;
+            }
+
+            if (result instanceof ServiceCallResult.Success<ReserveResponse> success) {
+                reserved.add(reserveRequest);
+                // Дополнительно проверяем success=false
+                if (!success.value().success()) {
+                    compensateReserved(reserved);
+                    throw new OrderProcessingException(
+                            "Недостаточно товара id=" + entry.getKey() + " на складе");
                 }
             }
-        } catch (RuntimeException e) {
-            // 5. Компенсация — снимаем уже сделанные резервы
-            for (ReserveRequest r : reserved) {
-                try {
-                    inventoryClient.releaseStock(r);
-                } catch (Exception ex) {
-                    log.error("Не удалось снять резерв {}: {}", r, ex.getMessage());
-                }
-            }
-            throw e;
         }
 
-        // 6. Собираем Order (без сохранения)
+        // 6. Собираем Order
         Order order = new Order();
         order.setCustomerName(request.customerName());
         order.setCustomerEmail(request.customerEmail());
-        order.setStatus("CONFIRMED");
-        order.setStatusDetails(null);
         order.setCreatedAt(LocalDateTime.now());
+
+        if (anyDegraded) {
+            order.setStatus("PENDING_CONFIRMATION");
+            order.setStatusDetails("Заказ требует ручной проверки: часть данных недоступна");
+        } else {
+            order.setStatus("CONFIRMED");
+            order.setStatusDetails(null);
+        }
 
         BigDecimal totalPrice = BigDecimal.ZERO;
 
         for (OrderItemRequest itemRequest : request.items()) {
-            ProductDto product = productsById.get(itemRequest.productId());
+            ServiceCallResult<ProductDto> result = productResults.get(itemRequest.productId());
 
             OrderItem item = new OrderItem();
             item.setOrder(order);
-            item.setProductId(product.id());
-            item.setProductName(product.name());
+            item.setProductId(itemRequest.productId());
             item.setQuantity(itemRequest.quantity());
-            item.setPrice(product.price());
-            order.getItems().add(item);
 
-            BigDecimal lineTotal = product.price()
-                    .multiply(BigDecimal.valueOf(itemRequest.quantity()));
-            totalPrice = totalPrice.add(lineTotal);
+            if (result instanceof ServiceCallResult.Success<ProductDto> success) {
+                ProductDto product = success.value();
+                item.setProductName(product.name());
+                item.setPrice(product.price());
+                totalPrice = totalPrice.add(
+                        product.price().multiply(BigDecimal.valueOf(itemRequest.quantity())));
+            } else {
+                // Деградация — данных нет
+                item.setProductName("Товар #" + itemRequest.productId() + " (ожидает проверки)");
+                item.setPrice(BigDecimal.ZERO);
+            }
+
+            order.getItems().add(item);
         }
 
         order.setTotalPrice(totalPrice);
 
-        // 7. Сохранение — через OrderService, транзакционно
         return orderService.saveOrder(order);
     }
 
-    private ProductDto fetchProduct(Long productId) {
+    private ServiceCallResult<ProductDto> fetchProduct(Long productId) {
         try {
-            return productClient.getProductById(productId);
+            ProductDto product = productClient.getProductById(productId);
+            return new ServiceCallResult.Success<>(product);
+        } catch (ProductServiceUnavailableException e) {
+            return new ServiceCallResult.Degraded<>("Каталог временно недоступен");
         } catch (FeignException.NotFound e) {
-            throw new OrderProcessingException("Товар с id=" + productId + " не найден");
+            return new ServiceCallResult.Failure<>("Товар с id=" + productId + " не найден");
         } catch (FeignException e) {
-            throw new OrderProcessingException(
+            return new ServiceCallResult.Failure<>(
                     "Не удалось получить данные товара id=" + productId);
         }
     }
 
-    private ReserveResponse reserveStock(ReserveRequest request) {
+    private ServiceCallResult<ReserveResponse> reserveStock(ReserveRequest request) {
         try {
-            return inventoryClient.reserveStock(request);
+            ReserveResponse response = inventoryClient.reserveStock(request);
+            return new ServiceCallResult.Success<>(response);
+        } catch (InventoryServiceUnavailableException e) {
+            return new ServiceCallResult.Degraded<>("Склад временно недоступен");
         } catch (FeignException.NotFound e) {
-            throw new OrderProcessingException(
+            return new ServiceCallResult.Failure<>(
                     "Складская запись для товара id=" + request.productId() + " не найдена");
         } catch (FeignException.Conflict e) {
-            throw new OrderProcessingException(
+            return new ServiceCallResult.Failure<>(
                     "Недостаточно товара id=" + request.productId() + " на складе");
         } catch (FeignException e) {
-            throw new OrderProcessingException(
+            return new ServiceCallResult.Failure<>(
                     "Не удалось зарезервировать товар id=" + request.productId());
+        }
+    }
+
+    private void compensateReserved(List<ReserveRequest> reserved) {
+        for (ReserveRequest r : reserved) {
+            try {
+                inventoryClient.releaseStock(r);
+            } catch (Exception ex) {
+                log.error("Не удалось снять резерв {}: {}", r, ex.getMessage());
+            }
         }
     }
 }
