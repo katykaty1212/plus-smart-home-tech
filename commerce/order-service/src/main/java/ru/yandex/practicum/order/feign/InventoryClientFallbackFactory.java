@@ -1,5 +1,6 @@
 package ru.yandex.practicum.order.feign;
 
+import feign.FeignException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cloud.openfeign.FallbackFactory;
 import org.springframework.stereotype.Component;
@@ -15,6 +16,12 @@ public class InventoryClientFallbackFactory implements FallbackFactory<Inventory
 
             @Override
             public ReserveResponse reserveStock(ReserveRequest request) {
+                if (cause instanceof FeignException.NotFound notFound) {
+                    throw notFound;
+                }
+                if (cause instanceof FeignException.Conflict conflict) {
+                    throw conflict;
+                }
                 log.warn("inventory-service недоступен при резервировании товара id={}",
                         request.productId(), cause);
                 throw new InventoryServiceUnavailableException(request.productId(), cause);
