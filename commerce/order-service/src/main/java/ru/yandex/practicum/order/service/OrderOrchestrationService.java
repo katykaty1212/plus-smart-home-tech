@@ -48,6 +48,15 @@ public class OrderOrchestrationService {
             }
         }
 
+        // 2.5. Проверяем деградацию по товарам — выставляем флаг
+        boolean anyDegraded = false;
+        for (ServiceCallResult<ProductDto> result : productResults.values()) {
+            if (result instanceof ServiceCallResult.Degraded<ProductDto>) {
+                anyDegraded = true;
+                break;
+            }
+        }
+
         // 3. Проверяем active у успешно полученных товаров
         for (ServiceCallResult<ProductDto> result : productResults.values()) {
             if (result instanceof ServiceCallResult.Success<ProductDto> success) {
@@ -67,27 +76,23 @@ public class OrderOrchestrationService {
 
         // 5. Резервируем
         List<ReserveRequest> reserved = new ArrayList<>();
-        boolean anyDegraded = false;
 
         for (Map.Entry<Long, Integer> entry : totalQuantityByProduct.entrySet()) {
             ReserveRequest reserveRequest = new ReserveRequest(entry.getKey(), entry.getValue());
             ServiceCallResult<ReserveResponse> result = reserveStock(reserveRequest);
 
             if (result instanceof ServiceCallResult.Failure<ReserveResponse> failure) {
-                // Бизнес-отказ — компенсируем и отклоняем
                 compensateReserved(reserved);
                 throw new OrderProcessingException(failure.message());
             }
 
             if (result instanceof ServiceCallResult.Degraded<ReserveResponse>) {
                 anyDegraded = true;
-                // Не добавляем в reserved — резерв не подтверждён
                 continue;
             }
 
             if (result instanceof ServiceCallResult.Success<ReserveResponse> success) {
                 reserved.add(reserveRequest);
-                // Дополнительно проверяем success=false
                 if (!success.value().success()) {
                     compensateReserved(reserved);
                     throw new OrderProcessingException(
@@ -127,7 +132,6 @@ public class OrderOrchestrationService {
                 totalPrice = totalPrice.add(
                         product.price().multiply(BigDecimal.valueOf(itemRequest.quantity())));
             } else {
-                // Деградация — данных нет
                 item.setProductName("Товар #" + itemRequest.productId() + " (ожидает проверки)");
                 item.setPrice(BigDecimal.ZERO);
             }
