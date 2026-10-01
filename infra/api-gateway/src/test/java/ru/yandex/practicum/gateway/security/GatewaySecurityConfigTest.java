@@ -22,10 +22,10 @@ import static org.springframework.web.reactive.function.server.RouterFunctions.r
         webEnvironment = SpringBootTest.WebEnvironment.MOCK,
         properties = {
                 "app.security.users[0].username=ivan",
-                "app.security.users[0].password=ivan",
+                "app.security.users[0].password={noop}ivan",
                 "app.security.users[0].roles[0]=USER",
                 "app.security.users[1].username=anna",
-                "app.security.users[1].password=anna",
+                "app.security.users[1].password={noop}anna",
                 "app.security.users[1].roles[0]=USER",
                 "app.security.users[1].roles[1]=ADMIN"
         }

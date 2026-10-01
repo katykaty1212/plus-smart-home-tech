@@ -10,7 +10,7 @@ import org.springframework.security.config.web.server.ServerHttpSecurity;
 import org.springframework.security.core.userdetails.MapReactiveUserDetailsService;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.factory.PasswordEncoderFactories;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.server.SecurityWebFilterChain;
 import org.springframework.security.web.server.context.NoOpServerSecurityContextRepository;
@@ -72,15 +72,14 @@ public class GatewaySecurityConfig {
 
     @Bean
     public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
+        return PasswordEncoderFactories.createDelegatingPasswordEncoder();
     }
 
     @Bean
-    public MapReactiveUserDetailsService userDetailsService(PasswordEncoder passwordEncoder) {
+    public MapReactiveUserDetailsService userDetailsService() {
         List<UserDetails> users = securityProperties.getUsers().stream()
-                .map(u -> User.builder()
-                        .username(u.getUsername())
-                        .password(passwordEncoder.encode(u.getPassword()))
+                .map(u -> User.withUsername(u.getUsername())
+                        .password(u.getPassword())
                         .roles(u.getRoles().toArray(String[]::new))
                         .build())
                 .toList();

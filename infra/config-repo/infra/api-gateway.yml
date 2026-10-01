@@ -111,11 +111,11 @@ app:
   security:
     users:
       - username: ivan
-        password: ivan
+        password: "{noop}ivan"
         roles:
           - USER
       - username: anna
-        password: anna
+        password: "{noop}anna"
         roles:
           - USER
           - ADMIN
