@@ -3,3 +3,6 @@ spring:
     name: order-service
   config:
     import: configserver:http://localhost:8888
+
+app:
+  source-service: order-service

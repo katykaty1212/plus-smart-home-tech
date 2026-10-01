@@ -1,4 +1,3 @@
-# Тестовая конфигурация: H2 вместо PostgreSQL.
 spring:
   cloud:
     config:
@@ -17,3 +16,6 @@ spring:
 eureka:
   client:
     enabled: false
+
+app:
+  source-service: order-service
